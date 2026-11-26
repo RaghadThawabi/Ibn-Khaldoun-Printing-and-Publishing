@@ -1,0 +1,1160 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Internal operations API for Ibn Khaldoun Printing
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: application
+    description: Authenticated app profile and dashboard
+  - name: branches
+    description: Branch setup and management
+  - name: users
+    description: App access and employee profiles
+  - name: customers
+    description: Customer records
+  - name: orders
+    description: Orders, items, references, and attachments
+  - name: storage
+    description: Private attachment storage
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /me:
+    get:
+      operationId: getMyAppProfile
+      tags: [application]
+      summary: Get the signed-in user's app access state
+      responses:
+        "200":
+          description: Access state and profile, if provisioned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyProfileResponse"
+        "401":
+          description: Sign-in required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [application]
+      summary: Get real order and workload counts for the user's authorized branches
+      responses:
+        "200":
+          description: Summary calculated from saved records.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /branches:
+    get:
+      operationId: listBranches
+      tags: [branches]
+      summary: List branches available to the signed-in user
+      parameters:
+        - name: includeInactive
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Branch records.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Branch"
+    post:
+      operationId: createBranch
+      tags: [branches]
+      summary: Create a company branch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BranchInput"
+      responses:
+        "201":
+          description: Branch created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+        "400":
+          description: Invalid branch details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /branches/{branchId}:
+    patch:
+      operationId: updateBranch
+      tags: [branches]
+      summary: Update or deactivate a branch
+      parameters:
+        - $ref: "#/components/parameters/BranchId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BranchUpdate"
+      responses:
+        "200":
+          description: Branch updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Branch"
+        "404":
+          description: Branch not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /users:
+    get:
+      operationId: listAppUsers
+      tags: [users]
+      summary: List company app users
+      responses:
+        "200":
+          description: App user profiles.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AppUser"
+  /users/invitations:
+    get:
+      operationId: listUserInvitations
+      tags: [users]
+      summary: List pending employee access invitations
+      responses:
+        "200":
+          description: Invitations that have not yet been claimed.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserInvitation"
+    post:
+      operationId: createUserInvitation
+      tags: [users]
+      summary: Prepare access for a real employee email
+      description: Creates an app invitation record; the app does not send email in this release.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInvitationInput"
+      responses:
+        "201":
+          description: Invitation record created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserInvitation"
+        "400":
+          description: Invalid invitation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /users/invitations/{invitationId}:
+    delete:
+      operationId: revokeUserInvitation
+      tags: [users]
+      summary: Revoke a pending invitation
+      parameters:
+        - $ref: "#/components/parameters/InvitationId"
+      responses:
+        "204":
+          description: Invitation revoked.
+        "404":
+          description: Invitation not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /users/{userId}:
+    patch:
+      operationId: updateAppUser
+      tags: [users]
+      summary: Change an employee's app role, branch access, or active state
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppUserUpdate"
+      responses:
+        "200":
+          description: App user updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
+        "404":
+          description: App user not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /customers:
+    get:
+      operationId: listCustomers
+      tags: [customers]
+      summary: Search and list customers
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Customer records matching the search.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Customer"
+    post:
+      operationId: createCustomer
+      tags: [customers]
+      summary: Register a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerInput"
+      responses:
+        "201":
+          description: Customer created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "400":
+          description: Invalid customer details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /customers/{customerId}:
+    get:
+      operationId: getCustomer
+      tags: [customers]
+      summary: Get a customer record
+      parameters:
+        - $ref: "#/components/parameters/CustomerId"
+      responses:
+        "200":
+          description: Customer record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "404":
+          description: Customer not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateCustomer
+      tags: [customers]
+      summary: Update a customer record
+      parameters:
+        - $ref: "#/components/parameters/CustomerId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerUpdate"
+      responses:
+        "200":
+          description: Customer updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "404":
+          description: Customer not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [orders]
+      summary: Search and filter orders
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: branchId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/OrderStatus"
+        - name: source
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/OrderSource"
+        - name: assignedUserId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Matching orders.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OrderListItem"
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Register an order with one or more independently tracked items
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Order and its items saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+        "400":
+          description: Invalid order details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /orders/possible-duplicates:
+    get:
+      operationId: findPossibleDuplicateOrders
+      tags: [orders]
+      summary: Find possible open orders using a contact phone number
+      description: Candidate suggestions only. Matching contact details never merge or alter records.
+      parameters:
+        - name: phone
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 3
+      responses:
+        "200":
+          description: Candidate orders requiring human review.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PossibleDuplicate"
+  /orders/{orderId}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get order details, items, references, attachments, and history
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Order details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+        "404":
+          description: Order not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateOrder
+      tags: [orders]
+      summary: Update order responsibility, requested date, notes, or exception status
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderUpdate"
+      responses:
+        "200":
+          description: Order updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetail"
+        "404":
+          description: Order not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /orders/{orderId}/references:
+    post:
+      operationId: linkIncomingReference
+      tags: [orders]
+      summary: Link another incoming customer message to this order
+      description: Records an authorized human decision; it does not merge another order record.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncomingReferenceInput"
+      responses:
+        "201":
+          description: Incoming reference linked to the order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncomingReference"
+  /orders/{orderId}/activity:
+    get:
+      operationId: listOrderActivity
+      tags: [orders]
+      summary: Get the order's saved activity history
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Activity events in chronological order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityEvent"
+  /orders/{orderId}/attachments:
+    post:
+      operationId: addOrderAttachment
+      tags: [orders]
+      summary: Attach an uploaded file to an order or order item
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttachmentInput"
+      responses:
+        "201":
+          description: Attachment metadata saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Attachment"
+        "400":
+          description: Invalid attachment metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /order-items/{itemId}:
+    patch:
+      operationId: updateOrderItem
+      tags: [orders]
+      summary: Update item specifications, design/production state, or item progress
+      parameters:
+        - $ref: "#/components/parameters/OrderItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderItemUpdate"
+      responses:
+        "200":
+          description: Order item updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderItem"
+        "404":
+          description: Order item not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [storage]
+      summary: Request a private upload URL for an order attachment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlRequest"
+      responses:
+        "200":
+          description: Presigned upload URL generated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResponse"
+        "400":
+          description: Invalid file metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /storage/objects/{objectPath}:
+    get:
+      operationId: getPrivateStorageObject
+      tags: [storage]
+      summary: Serve a private attachment after app access checks
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Private object content.
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Object not found or not available to this user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+components:
+  parameters:
+    BranchId:
+      name: branchId
+      in: path
+      required: true
+      schema:
+        type: integer
+    CustomerId:
+      name: customerId
+      in: path
+      required: true
+      schema:
+        type: integer
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: integer
+    OrderItemId:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        type: integer
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+    InvitationId:
+      name: invitationId
+      in: path
+      required: true
+      schema:
+        type: integer
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    Branch:
+      type: object
+      required: [id, name, isActive, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    BranchInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+    BranchUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        isActive:
+          type: boolean
+    UserRole:
+      type: string
+      enum: [admin, manager, order_reception, designer, production_employee, accountant, delivery_coordinator]
+    UserStatus:
+      type: string
+      enum: [pending, active, suspended]
+    AppUser:
+      type: object
+      required: [id, email, firstName, lastName, role, status, branchIds, createdAt]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        firstName:
+          type: [string, "null"]
+        lastName:
+          type: [string, "null"]
+        role:
+          $ref: "#/components/schemas/UserRole"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        branchIds:
+          type: array
+          items:
+            type: integer
+        createdAt:
+          type: string
+          format: date-time
+    MyProfileResponse:
+      type: object
+      required: [state, hasAdministrator]
+      properties:
+        state:
+          type: string
+          enum: [active, pending_invitation, setup_required, suspended]
+        hasAdministrator:
+          type: boolean
+        user:
+          anyOf:
+            - $ref: "#/components/schemas/AppUser"
+            - type: "null"
+    AppUserUpdate:
+      type: object
+      properties:
+        role:
+          $ref: "#/components/schemas/UserRole"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        branchIds:
+          type: array
+          items:
+            type: integer
+    UserInvitation:
+      type: object
+      required: [id, email, role, branchIds, createdAt]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/UserRole"
+        branchIds:
+          type: array
+          items:
+            type: integer
+        createdAt:
+          type: string
+          format: date-time
+    UserInvitationInput:
+      type: object
+      required: [email, role, branchIds]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/UserRole"
+        branchIds:
+          type: array
+          items:
+            type: integer
+    Customer:
+      type: object
+      required: [id, name, phone, notes, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: [string, "null"]
+        notes:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CustomerInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 180
+        phone:
+          type: [string, "null"]
+          maxLength: 80
+        notes:
+          type: [string, "null"]
+          maxLength: 2000
+    CustomerUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 180
+        phone:
+          type: [string, "null"]
+          maxLength: 80
+        notes:
+          type: [string, "null"]
+          maxLength: 2000
+    OrderSource:
+      type: string
+      enum: [whatsapp, messenger, phone, manager_phone, in_person, internal, other]
+    OrderItemStatus:
+      type: string
+      enum: [new, in_progress, ready, delivered, on_hold, cancelled]
+    DesignStatus:
+      type: string
+      enum: [not_required, waiting, in_progress, under_review, requires_revision, approved]
+    ProductionStatus:
+      type: string
+      enum: [not_started, in_progress, on_hold, ready]
+    OrderStatus:
+      type: string
+      enum: [new, in_progress, partially_ready, ready, partially_delivered, completed, on_hold, cancelled]
+    OrderItemInput:
+      type: object
+      required: [productName, quantity]
+      properties:
+        productName:
+          type: string
+          minLength: 1
+          maxLength: 180
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+        unit:
+          type: [string, "null"]
+          maxLength: 40
+        specifications:
+          type: [string, "null"]
+          maxLength: 4000
+        dimensions:
+          type: [string, "null"]
+          maxLength: 300
+        material:
+          type: [string, "null"]
+          maxLength: 300
+        designRequired:
+          type: boolean
+          default: false
+    OrderItem:
+      allOf:
+        - $ref: "#/components/schemas/OrderItemInput"
+        - type: object
+          required: [id, status, designStatus, productionStatus, createdAt, updatedAt]
+          properties:
+            id:
+              type: integer
+            status:
+              $ref: "#/components/schemas/OrderItemStatus"
+            designStatus:
+              $ref: "#/components/schemas/DesignStatus"
+            designerUserId:
+              type: [string, "null"]
+            productionStatus:
+              $ref: "#/components/schemas/ProductionStatus"
+            notes:
+              type: [string, "null"]
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    OrderItemUpdate:
+      type: object
+      properties:
+        productName:
+          type: string
+          minLength: 1
+          maxLength: 180
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+        unit:
+          type: [string, "null"]
+          maxLength: 40
+        specifications:
+          type: [string, "null"]
+          maxLength: 4000
+        dimensions:
+          type: [string, "null"]
+          maxLength: 300
+        material:
+          type: [string, "null"]
+          maxLength: 300
+        designRequired:
+          type: boolean
+        designStatus:
+          $ref: "#/components/schemas/DesignStatus"
+        designerUserId:
+          type: [string, "null"]
+        productionStatus:
+          $ref: "#/components/schemas/ProductionStatus"
+        status:
+          $ref: "#/components/schemas/OrderItemStatus"
+        notes:
+          type: [string, "null"]
+          maxLength: 2000
+    OrderInput:
+      type: object
+      required: [customerId, branchId, source, items]
+      properties:
+        customerId:
+          type: integer
+        branchId:
+          type: integer
+        source:
+          $ref: "#/components/schemas/OrderSource"
+        sourceDetails:
+          type: [string, "null"]
+          maxLength: 300
+        responsibleUserId:
+          type: [string, "null"]
+        requestedDeliveryDate:
+          type: [string, "null"]
+          format: date
+        notes:
+          type: [string, "null"]
+          maxLength: 4000
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/OrderItemInput"
+    IncomingReference:
+      type: object
+      required: [id, source, referenceDetails, receivedAt, createdAt]
+      properties:
+        id:
+          type: integer
+        source:
+          $ref: "#/components/schemas/OrderSource"
+        referenceDetails:
+          type: [string, "null"]
+        receivedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    IncomingReferenceInput:
+      type: object
+      required: [source]
+      properties:
+        source:
+          $ref: "#/components/schemas/OrderSource"
+        referenceDetails:
+          type: [string, "null"]
+          maxLength: 1000
+        receivedAt:
+          type: [string, "null"]
+          format: date-time
+    ActivityEvent:
+      type: object
+      required: [id, actorUserId, action, summary, occurredAt]
+      properties:
+        id:
+          type: integer
+        actorUserId:
+          type: string
+        action:
+          type: string
+        summary:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+    Attachment:
+      type: object
+      required: [id, fileName, objectPath, contentType, fileSize, uploadedBy, createdAt]
+      properties:
+        id:
+          type: integer
+        fileName:
+          type: string
+        objectPath:
+          type: string
+        contentType:
+          type: string
+        fileSize:
+          type: integer
+        itemId:
+          type: [integer, "null"]
+        uploadedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    AttachmentInput:
+      type: object
+      required: [fileName, objectPath, contentType, fileSize]
+      properties:
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        objectPath:
+          type: string
+          minLength: 1
+        contentType:
+          type: string
+          minLength: 1
+          maxLength: 150
+        fileSize:
+          type: integer
+          minimum: 1
+        itemId:
+          type: [integer, "null"]
+    OrderListItem:
+      type: object
+      required: [id, orderNumber, customer, branch, source, status, itemCount, createdAt]
+      properties:
+        id:
+          type: integer
+        orderNumber:
+          type: string
+        customer:
+          $ref: "#/components/schemas/Customer"
+        branch:
+          $ref: "#/components/schemas/Branch"
+        source:
+          $ref: "#/components/schemas/OrderSource"
+        status:
+          $ref: "#/components/schemas/OrderStatus"
+        responsibleUser:
+          anyOf:
+            - $ref: "#/components/schemas/AppUser"
+            - type: "null"
+        requestedDeliveryDate:
+          type: [string, "null"]
+          format: date
+        itemCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    OrderDetail:
+      allOf:
+        - $ref: "#/components/schemas/OrderListItem"
+        - type: object
+          required: [notes, items, attachments, references, activity, updatedAt]
+          properties:
+            sourceDetails:
+              type: [string, "null"]
+            notes:
+              type: [string, "null"]
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/OrderItem"
+            attachments:
+              type: array
+              items:
+                $ref: "#/components/schemas/Attachment"
+            references:
+              type: array
+              items:
+                $ref: "#/components/schemas/IncomingReference"
+            activity:
+              type: array
+              items:
+                $ref: "#/components/schemas/ActivityEvent"
+            updatedAt:
+              type: string
+              format: date-time
+    OrderUpdate:
+      type: object
+      properties:
+        branchId:
+          type: integer
+        responsibleUserId:
+          type: [string, "null"]
+        requestedDeliveryDate:
+          type: [string, "null"]
+          format: date
+        notes:
+          type: [string, "null"]
+          maxLength: 4000
+        statusOverride:
+          type: string
+          enum: [none, on_hold, cancelled]
+        statusReason:
+          type: [string, "null"]
+          maxLength: 1000
+    PossibleDuplicate:
+      type: object
+      required: [order, matchReason]
+      properties:
+        order:
+          $ref: "#/components/schemas/OrderListItem"
+        matchReason:
+          type: string
+    DashboardSummary:
+      type: object
+      required: [totalOrders, activeOrders, ordersAwaitingAssignment, readyOrders, totalCustomers, totalBranches]
+      properties:
+        totalOrders:
+          type: integer
+        activeOrders:
+          type: integer
+        ordersAwaitingAssignment:
+          type: integer
+        readyOrders:
+          type: integer
+        totalCustomers:
+          type: integer
+        totalBranches:
+          type: integer
+    UploadUrlRequest:
+      type: object
+      required: [orderId, name, size, contentType]
+      properties:
+        orderId:
+          type: integer
+        itemId:
+          type: [integer, "null"]
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+          maxLength: 150
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath, metadata]
+      properties:
+        uploadURL:
+          type: string
+          format: uri
+        objectPath:
+          type: string
+        metadata:
+          $ref: "#/components/schemas/UploadUrlRequest"
+

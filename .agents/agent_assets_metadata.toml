@@ -1,0 +1,17 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Ume_6QmBcXcYeOwfcoTKg"
+uri = "file://.local/conversation-workspace/files/attached_assets/Ibn_Khaldoun_Printing_System_Plan.md"
+type = "text"
+title = "Ibn Khaldoun Printing — Revised System Plan"
+description = "Version 0.2 expands the UX/UI strategy, visual identity, Arabic RTL guidance, role-specific workspaces, order details, employee usability testing, measurable targets, and the prototype gate. Planning only; no implementation started."
+logical_id = "b00ebef9-d23f-4add-bc3f-7afefe922116"
+content_hash = "sha256:1b2eb6fa4901547747e4a5ef252f58999ccb356c53f4bc4f81b8f1ed000ca514"
+size = 63393
+mtime_ms = 1795700286601
+storage_uri = "gcs://replit-rams-assets-pike/rams/assets/conversation:6248db38-8aa3-476a-977b-183d11b3b6f9/b00ebef9-d23f-4add-bc3f-7afefe922116/e38785df-c256-4644-b574-1fe7fb422698"
+storage_version_token = "1795700308145570"
+content_type = "text/markdown"
+source_uri = "file://attached_assets/Ibn_Khaldoun_Printing_System_Plan.md"

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Ibn Khaldoun Printing"
+description = "An Arabic-first internal order management app for Ibn Khaldoun Printing staff to register customers and multi-item orders, preserve attachments, assign responsibility, and track progress across branches."
+version = "1.0.0"
+id = "artifacts/ibn-khaldoun-printing"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21467
+
+[services.development]
+run = "pnpm --filter @workspace/ibn-khaldoun-printing run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ibn-khaldoun-printing", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/ibn-khaldoun-printing/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21467"
+BASE_PATH = "/"
