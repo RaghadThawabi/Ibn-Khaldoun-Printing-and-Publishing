@@ -1,7 +1,7 @@
 import { useEffect, useRef, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { ClerkProvider, SignIn, SignUp, SignedIn, SignedOut, useClerk } from '@clerk/react';
-import { publishableKeyFromHost } from '@clerk/shared/keys';
+import { ClerkProvider, SignIn, SignUp, Show, useClerk } from '@clerk/react';
+import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import {
   useGetMyAppProfile, getGetMyAppProfileQueryKey, useGetDashboardSummary, getGetDashboardSummaryQueryKey,
@@ -91,7 +91,8 @@ function AuthStatus() {
   if (isError) return <main className="page-content"><ErrorBox retry={() => void refetch()} /></main>;
   const pending = data?.state === 'pending_invitation';
   const needsSetup = data?.state === 'setup_required';
-  return <div className="welcome" dir="rtl"><section className="welcome-aside"><div className="brand-row" style={{ border: 0 }}><div className="brand-mark">خ</div><strong>مطبعة ابن خلدون</strong></div><div className="welcome-copy"><h1>{pending ? 'حسابك بانتظار التفعيل.' : 'نجهّز مساحة العمل.'}</h1><p>{pending ? 'تم استلام طلب الوصول. سيمنحك مدير النظام صلاحية الدخول عند اكتمال إعداد حسابك.' : 'لم يكتمل إعداد وصول الشركة بعد. يرجى التواصل مع مدير النظام.'}</p></div><div>بوابة فريق العمل</div></section><section className="welcome-main"><div className="panel" style={{ maxWidth: 420 }}><div className="empty-mark"><ShieldCheck /></div><h2 style={{ marginTop: 0 }}>{pending ? 'دعوة قيد الانتظار' : 'الإعداد مطلوب'}</h2><p style={{ color: '#718080', lineHeight: 1.8 }}>لا يمكن عرض بيانات العمل قبل تفعيل الوصول. إذا كنت تتوقع صلاحية نشطة، تواصل مع مسؤول النظام.</p><button className="btn btn-outline" onClick={() => void refetch()} data-testid="button-check-access">التحقق مجدداً</button></div></section></div>;
+  const suspended = data?.state === 'suspended';
+  return <div className="welcome" dir="rtl"><section className="welcome-aside"><div className="brand-row" style={{ border: 0 }}><div className="brand-mark">خ</div><strong>مطبعة ابن خلدون</strong></div><div className="welcome-copy"><h1>{pending ? 'حسابك بانتظار التفعيل.' : suspended ? 'تم إيقاف هذا الحساب.' : 'نجهّز مساحة العمل.'}</h1><p>{pending ? 'لم يُفعّل مدير النظام هذا الحساب بعد.' : suspended ? 'تواصل مع مدير النظام إذا كنت تعتقد أن هذا الإيقاف غير مقصود.' : 'لم يكتمل إعداد وصول الشركة بعد. يرجى التواصل مع مدير النظام.'}</p></div><div>بوابة فريق العمل</div></section><section className="welcome-main"><div className="panel" style={{ maxWidth: 420 }}><div className="empty-mark"><ShieldCheck /></div><h2 style={{ marginTop: 0 }}>{pending ? 'دعوة قيد الانتظار' : suspended ? 'الوصول موقوف' : needsSetup ? 'الإعداد مطلوب' : 'تعذّر التحقق من الوصول'}</h2><p style={{ color: '#718080', lineHeight: 1.8 }}>لا يمكن عرض بيانات العمل قبل تفعيل الوصول. إذا كنت تتوقع صلاحية نشطة، تواصل مع مسؤول النظام.</p><button className="btn btn-outline" onClick={() => void refetch()} data-testid="button-check-access">التحقق مجدداً</button></div></section></div>;
 }
 function SignInPage() { return <div className="welcome-main" style={{ minHeight: '100dvh' }}><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></div>; }
 function SignUpPage() { return <div className="welcome-main" style={{ minHeight: '100dvh' }}><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>; }
@@ -107,26 +108,37 @@ function Shell({ children }: { children: ReactNode }) {
   if (profile.isLoading) return <div className="page-content"><Busy label="جارٍ فتح مساحة العمل" /></div>;
   if (profile.isError || profile.data?.state !== 'active') return <AuthStatus />;
   const user = profile.data.user;
+  const role = user?.role || '';
+  const visibleNavigation = navigation.filter(([href]) =>
+    href === '/branches' ? role === 'admin' :
+    href === '/team' ? ['admin', 'manager'].includes(role) :
+    true,
+  );
+  const restrictedPage =
+    (path === '/branches' && role !== 'admin') ||
+    (path === '/team' && !['admin', 'manager'].includes(role));
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || '';
   return <div className="app-shell" dir="rtl">
-    <aside className="sidebar"><div className="brand-row"><div className="brand-mark">خ</div><div><strong>ابن خلدون</strong><div style={{ fontSize: 11, color: '#b9cbc5' }}>إدارة الطلبات</div></div></div><nav className="nav-links">{navigation.map(([href, label, Icon]) => <Link href={href} key={href} className={`nav-link ${path === href || (href === '/orders' && path.startsWith('/orders')) ? 'active' : ''}`} data-testid={`link-nav-${href.slice(1)}`}><Icon size={19} />{label}</Link>)}</nav><div className="sidebar-foot"><div style={{ fontWeight: 700, color: '#f5f1e7' }}>{fullName}</div><div>{roleNames[user?.role || ''] || user?.role}</div><button className="nav-link" style={{ marginTop: 16, width: '100%', background: 'transparent', border: 0, cursor: 'pointer' }} onClick={() => void clerk.signOut({ redirectUrl: basePath || '/' })} data-testid="button-signout"><LogOut size={17} />تسجيل الخروج</button></div></aside>
-    <div className="workspace"><header className="topbar"><div className="inline" style={{ color: '#60716f', fontSize: 14 }}><span style={{ width: 8, height: 8, borderRadius: 50, background: '#60a08b' }} />مساحة عمل مطبعة ابن خلدون</div><div className="inline"><span style={{ color: '#203b45', fontWeight: 700 }}>{fullName}</span><span className="badge">{roleNames[user?.role || ''] || user?.role}</span></div></header><main className="page-content">{children}</main></div>
-    <nav className="mobile-nav">{navigation.slice(0, 4).map(([href, label, Icon]) => <Link href={href} key={href} className={path === href ? 'active' : ''} data-testid={`mobile-nav-${href.slice(1)}`}><Icon size={19} />{label}</Link>)}</nav>
+    <aside className="sidebar"><div className="brand-row"><div className="brand-mark">خ</div><div><strong>ابن خلدون</strong><div style={{ fontSize: 11, color: '#b9cbc5' }}>إدارة الطلبات</div></div></div><nav className="nav-links">{visibleNavigation.map(([href, label, Icon]) => <Link href={href} key={href} className={`nav-link ${path === href || (href === '/orders' && path.startsWith('/orders')) ? 'active' : ''}`} data-testid={`link-nav-${href.slice(1)}`}><Icon size={19} />{label}</Link>)}</nav><div className="sidebar-foot"><div style={{ fontWeight: 700, color: '#f5f1e7' }}>{fullName}</div><div>{roleNames[user?.role || ''] || user?.role}</div><button className="nav-link" style={{ marginTop: 16, width: '100%', background: 'transparent', border: 0, cursor: 'pointer' }} onClick={() => void clerk.signOut({ redirectUrl: basePath || '/' })} data-testid="button-signout"><LogOut size={17} />تسجيل الخروج</button></div></aside>
+    <div className="workspace"><header className="topbar"><div className="inline" style={{ color: '#60716f', fontSize: 14 }}><span style={{ width: 8, height: 8, borderRadius: 50, background: '#60a08b' }} />مساحة عمل مطبعة ابن خلدون</div><div className="inline"><span style={{ color: '#203b45', fontWeight: 700 }}>{fullName}</span><span className="badge">{roleNames[user?.role || ''] || user?.role}</span></div></header><main className="page-content">{restrictedPage ? <div className="panel"><Empty title="هذه الصفحة مخصصة للإدارة" detail="لا يملك حسابك صلاحية إدارة الفروع أو الفريق." /></div> : children}</main></div>
+    <nav className="mobile-nav">{visibleNavigation.slice(0, 4).map(([href, label, Icon]) => <Link href={href} key={href} className={path === href ? 'active' : ''} data-testid={`mobile-nav-${href.slice(1)}`}><Icon size={19} />{label}</Link>)}</nav>
   </div>;
 }
 function Protected({ children }: { children: ReactNode }) {
-  return <SignedIn><Shell>{children}</Shell></SignedIn>;
+  return <Show when="signed-in"><Shell>{children}</Shell></Show>;
 }
 function Dashboard() {
   const q = useGetDashboardSummary();
+  const profile = useGetMyAppProfile();
+  const canCreateOrder = ['admin', 'manager', 'order_reception'].includes(profile.data?.user?.role || '');
   const data = q.data;
   const metrics = [
     ['إجمالي الطلبات', data?.totalOrders, ClipboardList], ['طلبات قيد التنفيذ', data?.activeOrders, Activity],
     ['بانتظار مسؤول', data?.ordersAwaitingAssignment, UsersRound], ['طلبات جاهزة', data?.readyOrders, PackageCheck],
   ] as const;
-  return <><PageTitle title="الرئيسية" subtitle="ملخص الطلبات وسير العمل في الفروع." action={<Link href="/orders/new" className="btn btn-primary" data-testid="button-new-order"><Plus size={18} />طلب جديد</Link>} />
+  return <><PageTitle title="الرئيسية" subtitle="ملخص الطلبات وسير العمل في الفروع." action={canCreateOrder ? <Link href="/orders/new" className="btn btn-primary" data-testid="button-new-order"><Plus size={18} />طلب جديد</Link> : undefined} />
     {q.isLoading ? <div className="metric-grid">{metrics.map(([label]) => <div className="skeleton" key={label} />)}</div> : q.isError ? <ErrorBox retry={() => void q.refetch()} /> : <div className="metric-grid">{metrics.map(([label, value, Icon]) => <div className="metric" key={label}><div className="metric-label">{label}<span className="metric-icon"><Icon size={18} /></span></div><div className="metric-value" data-testid={`metric-${label}`}>{value ?? 0}</div></div>)}</div>}
-    {!q.isLoading && !q.isError && data && data.totalOrders === 0 && <div className="panel"><Empty title="لا توجد طلبات مسجلة" detail="ستظهر مؤشرات الطلبات هنا بعد تسجيل أول طلب للشركة." action={<Link href="/orders/new" className="btn btn-primary">تسجيل أول طلب</Link>} /></div>}
+    {!q.isLoading && !q.isError && data && data.totalOrders === 0 && <div className="panel"><Empty title="لا توجد طلبات مسجلة" detail="ستظهر مؤشرات الطلبات هنا بعد تسجيل أول طلب للشركة." action={canCreateOrder ? <Link href="/orders/new" className="btn btn-primary">تسجيل أول طلب</Link> : undefined} /></div>}
     {!q.isLoading && !q.isError && data && <div className="panel" style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}><div style={{ flex: 1, minWidth: 170 }}><div className="metric-label">العملاء المسجلون</div><strong style={{ fontSize: 24 }}>{data.totalCustomers}</strong></div><div style={{ flex: 1, minWidth: 170 }}><div className="metric-label">الفروع النشطة</div><strong style={{ fontSize: 24 }}>{data.totalBranches}</strong></div><Link href="/orders" className="btn btn-quiet">عرض الطلبات <ArrowUpRight size={17} /></Link></div>}
   </>;
 }
@@ -134,12 +146,14 @@ function Orders() {
   const [search, setSearch] = useState('');
   const [, setLocation] = useLocation();
   const [status, setStatus] = useState('');
+  const profile = useGetMyAppProfile();
+  const canCreateOrder = ['admin', 'manager', 'order_reception'].includes(profile.data?.user?.role || '');
   const params = useMemo(() => ({ search: search || undefined, status: status ? status as never : undefined, limit: 100 }), [search, status]);
   const q = useListOrders(params);
   const statusOptions = ['new', 'in_progress', 'partially_ready', 'ready', 'partially_delivered', 'completed', 'on_hold', 'cancelled'];
-  return <><PageTitle title="الطلبات" subtitle="ابحث عن طلب وتابع حالته والمسؤول عنه." action={<Link href="/orders/new" className="btn btn-primary" data-testid="button-new-order"><Plus size={18} />طلب جديد</Link>} />
+  return <><PageTitle title="الطلبات" subtitle="ابحث عن طلب وتابع حالته والمسؤول عنه." action={canCreateOrder ? <Link href="/orders/new" className="btn btn-primary" data-testid="button-new-order"><Plus size={18} />طلب جديد</Link> : undefined} />
     <div className="toolbar"><div style={{ position: 'relative', flex: 1 }}><Search size={18} style={{ position: 'absolute', right: 13, top: 14, color: '#758480' }} /><input className="input" style={{ paddingRight: 40 }} placeholder="رقم الطلب أو اسم العميل" value={search} onChange={e => setSearch(e.target.value)} data-testid="input-search-orders" /></div><select className="select" style={{ maxWidth: 230 }} value={status} onChange={e => setStatus(e.target.value)} data-testid="select-order-status"><option value="">كل الحالات</option>{statusOptions.map(s => <option value={s} key={s}>{displayStatus(s)}</option>)}</select></div>
-    {q.isLoading ? <Busy /> : q.isError ? <ErrorBox retry={() => void q.refetch()} /> : !q.data?.length ? <div className="panel"><Empty title={search || status ? 'لا توجد نتائج مطابقة' : 'لا توجد طلبات حتى الآن'} detail={search || status ? 'جرّب تغيير كلمات البحث أو حالة الطلب.' : 'سيظهر هنا كل طلب جديد يتم تسجيله في النظام.'} action={!search && !status ? <Link href="/orders/new" className="btn btn-primary">إنشاء طلب</Link> : undefined} /></div> :
+    {q.isLoading ? <Busy /> : q.isError ? <ErrorBox retry={() => void q.refetch()} /> : !q.data?.length ? <div className="panel"><Empty title={search || status ? 'لا توجد نتائج مطابقة' : 'لا توجد طلبات حتى الآن'} detail={search || status ? 'جرّب تغيير كلمات البحث أو حالة الطلب.' : 'سيظهر هنا كل طلب جديد يتم تسجيله في النظام.'} action={canCreateOrder && !search && !status ? <Link href="/orders/new" className="btn btn-primary">إنشاء طلب</Link> : undefined} /></div> :
       <div className="table-wrap"><table><thead><tr><th>رقم الطلب</th><th>العميل</th><th>الفرع</th><th>الحالة</th><th>المسؤول</th><th>موعد التسليم</th></tr></thead><tbody>{q.data.map(o => <tr key={o.id} data-clickable="true" onClick={() => setLocation(`/orders/${o.id}`)} data-testid={`row-order-${o.id}`}><td style={{ fontWeight: 700, color: '#286d64' }}>{o.orderNumber}</td><td>{o.customer.name}</td><td>{o.branch.name}</td><td><span className={statusClass(o.status)}>{displayStatus(o.status)}</span></td><td>{o.responsibleUser ? [o.responsibleUser.firstName, o.responsibleUser.lastName].filter(Boolean).join(' ') || o.responsibleUser.email : 'غير معيّن'}</td><td>{niceDate(o.requestedDeliveryDate)}</td></tr>)}</tbody></table></div>}
   </>;
 }
@@ -151,23 +165,29 @@ function NewOrder() {
   const [customerName, setCustomerName] = useState(''); const [phone, setPhone] = useState('');
   const [branchId, setBranchId] = useState(''); const [source, setSource] = useState('whatsapp'); const [sourceDetails, setSourceDetails] = useState('');
   const [delivery, setDelivery] = useState(''); const [notes, setNotes] = useState(''); const [items, setItems] = useState<ItemDraft[]>([blankItem()]);
-  const [files, setFiles] = useState<File[]>([]); const [formError, setFormError] = useState('');
+  const [files, setFiles] = useState<File[]>([]); const [formError, setFormError] = useState(''); const [createdOrderId, setCreatedOrderId] = useState<number | null>(null);
   const customers = useListCustomers({ limit: 100 }); const branches = useListBranches({ includeInactive: false });
   const createCustomer = useCreateCustomer(); const createOrder = useCreateOrder(); const requestUpload = useRequestUploadUrl(); const attach = useAddOrderAttachment();
   const duplicates = useFindPossibleDuplicateOrders({ phone }, { query: { enabled: phone.replace(/\D/g, '').length >= 7, queryKey: getFindPossibleDuplicateOrdersQueryKey({ phone }) } });
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setFormError('');
+    let savedOrderId: number | null = null;
     try {
       if (!items.length || items.some(i => !i.productName.trim() || Number(i.quantity) <= 0)) { setFormError('أضف منتجاً واحداً على الأقل وتأكد من صحة الكمية.'); return; }
+      if (files.some(file => file.size > 25 * 1024 * 1024)) { setFormError('يجب ألا يتجاوز حجم كل ملف 25 ميغابايت.'); return; }
       let id = Number(customerId);
       if (isNewCustomer) {
         if (!customerName.trim()) { setFormError('اكتب اسم العميل.'); return; }
         const c = await createCustomer.mutateAsync({ data: { name: customerName.trim(), phone: phone || null } });
         id = c.id;
+        setCustomerId(String(c.id));
+        setIsNewCustomer(false);
         await qc.invalidateQueries({ queryKey: getListCustomersQueryKey() });
       }
       if (!id || !branchId) { setFormError('اختر العميل والفرع قبل المتابعة.'); return; }
       const order = await createOrder.mutateAsync({ data: { customerId: id, branchId: Number(branchId), source: source as never, sourceDetails: sourceDetails || null, requestedDeliveryDate: delivery || null, notes: notes || null, items: items.map(i => ({ productName: i.productName.trim(), quantity: Number(i.quantity), unit: i.unit || null, specifications: i.specifications || null, dimensions: i.dimensions || null, material: i.material || null, designRequired: i.designRequired })) } });
+      savedOrderId = order.id;
+      setCreatedOrderId(order.id);
       for (const file of files) {
         const uploaded = await requestUpload.mutateAsync({ data: { orderId: order.id, name: file.name, size: file.size, contentType: file.type || 'application/octet-stream' } });
         const response = await fetch(uploaded.uploadURL, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
@@ -176,7 +196,11 @@ function NewOrder() {
       }
       await Promise.all([qc.invalidateQueries({ queryKey: getListOrdersQueryKey() }), qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }), qc.invalidateQueries({ queryKey: getGetOrderQueryKey(order.id) })]);
       setLoc(`/orders/${order.id}`);
-    } catch (err) { setFormError(errText(err)); }
+    } catch (err) {
+      setFormError(savedOrderId
+        ? `تم حفظ الطلب ${savedOrderId}، لكن لم تكتمل مرفقاته. افتح الطلب وتابع رفع الملفات دون إنشاء طلب جديد. ${errText(err)}`
+        : errText(err));
+    }
   };
   const busy = createOrder.isPending || createCustomer.isPending || requestUpload.isPending || attach.isPending;
   return <><PageTitle title="طلب جديد" subtitle="سجّل العميل والتفاصيل الأساسية، ثم أضف المنتجات والملفات الأصلية." action={<Link href="/orders" className="btn btn-outline"><ArrowLeft size={17} />العودة</Link>} />
@@ -202,7 +226,7 @@ function NewOrder() {
       <div className="field"><label>ملاحظات عامة</label><textarea className="textarea" value={notes} onChange={e => setNotes(e.target.value)} /></div>
       <div className="field"><label>الملفات الأصلية</label><input type="file" multiple className="input" onChange={e => setFiles(Array.from(e.target.files || []))} data-testid="input-order-files" /><small style={{ color: '#718080' }}>تُرفع الملفات إلى التخزين الخاص ثم تُربط بالطلب بعد حفظه.</small></div>
       {formError && <p role="alert" style={{ color: '#a64434' }}>{formError}</p>}
-      <div className="inline"><button className="btn btn-primary" disabled={busy} data-testid="button-save-order">{busy ? <LoaderCircle className="animate-spin" size={18} /> : <Check size={18} />}حفظ الطلب</button><Link href="/orders" className="btn btn-outline">إلغاء</Link></div>
+       <div className="inline">{createdOrderId ? <Link href={`/orders/${createdOrderId}`} className="btn btn-primary" data-testid="button-open-saved-order"><ArrowUpRight size={18} />فتح الطلب المحفوظ</Link> : <button className="btn btn-primary" disabled={busy} data-testid="button-save-order">{busy ? <LoaderCircle className="animate-spin" size={18} /> : <Check size={18} />}حفظ الطلب</button>}<Link href="/orders" className="btn btn-outline">إلغاء</Link></div>
     </form>
   </>;
 }
@@ -224,25 +248,207 @@ function AttachmentLink({ attachment }: { attachment: { objectPath: string; file
   };
   return <button className="btn btn-outline" onClick={download} disabled={q.isLoading} data-testid={`button-file-${attachment.fileName}`}>{q.isLoading ? <LoaderCircle size={16} /> : <ArrowDownToLine size={16} />}{attachment.fileName}</button>;
 }
+function AttachmentUploader({ orderId, onUploaded }: { orderId: number; onUploaded: () => Promise<void> }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState('');
+  const requestUpload = useRequestUploadUrl();
+  const attach = useAddOrderAttachment();
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!file) return;
+    setError('');
+    try {
+      if (file.size > 25 * 1024 * 1024) {
+        setError('يجب ألا يتجاوز حجم الملف 25 ميغابايت.');
+        return;
+      }
+      const contentType = file.type || 'application/octet-stream';
+      const uploaded = await requestUpload.mutateAsync({ data: { orderId, name: file.name, size: file.size, contentType } });
+      const response = await fetch(uploaded.uploadURL, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file });
+      if (!response.ok) throw new Error('تعذّر رفع الملف إلى التخزين الخاص.');
+      await attach.mutateAsync({ orderId, data: { fileName: file.name, objectPath: uploaded.objectPath, contentType, fileSize: file.size } });
+      setFile(null);
+      await onUploaded();
+    } catch (err) {
+      setError(errText(err));
+    }
+  };
+  const busy = requestUpload.isPending || attach.isPending;
+  return <form onSubmit={save} style={{ marginTop: 16 }}>
+    <div className="field"><label htmlFor={`attachment-${orderId}`}>إضافة ملف أصلي</label><input id={`attachment-${orderId}`} type="file" className="input" onChange={e => setFile(e.target.files?.[0] || null)} data-testid={`input-attach-order-${orderId}`} /><small style={{ color: '#718080' }}>ملفات خاصة بهذا الطلب، بحد أقصى 25 ميغابايت للملف.</small></div>
+    {error && <p role="alert" style={{ color: '#a64434' }} data-testid={`error-attachment-${orderId}`}>{error}</p>}
+    <button className="btn btn-quiet" type="submit" disabled={!file || busy} data-testid={`button-attach-order-${orderId}`}>{busy ? <LoaderCircle size={17} className="animate-spin" /> : <Upload size={17} />}رفع الملف وإرفاقه</button>
+  </form>;
+}
 function OrderDetail() {
-  const { orderId = '' } = useParams<{ orderId: string }>(); const id = Number(orderId);
-  const qc = useQueryClient(); const q = useGetOrder(id); const activity = useListOrderActivity(id, { query: { queryKey: getListOrderActivityQueryKey(id) } });
-  const team = useListAppUsers();
-  const updateOrder = useUpdateOrder(); const linkRef = useLinkIncomingReference(); const updateItem = useUpdateOrderItem();
-  const [referenceSource, setReferenceSource] = useState('whatsapp'); const [referenceDetails, setReferenceDetails] = useState(''); const [error, setError] = useState('');
-  const invalidate = async () => { await Promise.all([qc.invalidateQueries({ queryKey: getGetOrderQueryKey(id) }), qc.invalidateQueries({ queryKey: getListOrderActivityQueryKey(id) }), qc.invalidateQueries({ queryKey: getListOrdersQueryKey() }), qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() })]); };
-  if (q.isLoading) return <Busy />; if (q.isError || !q.data) return <ErrorBox retry={() => void q.refetch()} />;
+  const { orderId = '' } = useParams<{ orderId: string }>();
+  const id = Number(orderId);
+  const qc = useQueryClient();
+  const q = useGetOrder(id);
+  const activity = useListOrderActivity(id, { query: { queryKey: getListOrderActivityQueryKey(id) } });
+  const profile = useGetMyAppProfile();
+  const role = profile.data?.user?.role || '';
+  const canEditOrder = ['admin', 'manager', 'order_reception'].includes(role);
+  const canEditDesign = canEditOrder || role === 'designer';
+  const canEditProduction = canEditOrder || role === 'production_employee';
+  const canAssignOrder = canEditOrder;
+  const team = useListAppUsers({ query: { enabled: canAssignOrder, queryKey: getListAppUsersQueryKey() } });
+  const updateOrder = useUpdateOrder();
+  const linkRef = useLinkIncomingReference();
+  const updateItem = useUpdateOrderItem();
+  const [referenceSource, setReferenceSource] = useState('whatsapp');
+  const [referenceDetails, setReferenceDetails] = useState('');
+  const [error, setError] = useState('');
+  const invalidate = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: getGetOrderQueryKey(id) }),
+      qc.invalidateQueries({ queryKey: getListOrderActivityQueryKey(id) }),
+      qc.invalidateQueries({ queryKey: getListOrdersQueryKey() }),
+      qc.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() }),
+    ]);
+  };
+  if (q.isLoading) return <Busy />;
+  if (q.isError || !q.data) return <ErrorBox retry={() => void q.refetch()} />;
   const o = q.data;
-  const onReference = async (e: FormEvent) => { e.preventDefault(); setError(''); try { await linkRef.mutateAsync({ orderId: id, data: { source: referenceSource as never, referenceDetails: referenceDetails || null } }); setReferenceDetails(''); await invalidate(); } catch (err) { setError(errText(err)); } };
-  const orderStatusOptions = ['none','on_hold','cancelled'];
-  return <><PageTitle title={`طلب ${o.orderNumber}`} subtitle={`${o.customer.name} · ${o.branch.name}`} action={<Link href="/orders" className="btn btn-outline"><ArrowLeft size={17} />كل الطلبات</Link>} />
-    <div className="order-layout"><div className="stack">
-      <section className="panel"><div className="inline" style={{ justifyContent: 'space-between', marginBottom: 12 }}><h2 style={{ margin: 0, fontSize: 20 }}>ملخص الطلب</h2><span className={statusClass(o.status)}>{displayStatus(o.status)}</span></div><div className="meta-row"><span>العميل</span><strong>{o.customer.name}</strong></div><div className="meta-row"><span>الفرع</span><strong>{o.branch.name}</strong></div><div className="meta-row"><span>مصدر الطلب</span><strong>{displayStatus(o.source)} {o.sourceDetails || ''}</strong></div><div className="form-grid" style={{ marginTop: 12 }}><div className="field"><label>المسؤول عن الطلب</label><select className="select" value={o.responsibleUser?.id || ''} onChange={async e => { try { await updateOrder.mutateAsync({ orderId: id, data: { responsibleUserId: e.target.value || null } }); await invalidate(); } catch (err) { setError(errText(err)); } }} data-testid="select-order-owner"><option value="">غير معيّن</option>{(team.data || []).filter(u => u.status === 'active').map(u => <option value={u.id} key={u.id}>{[u.firstName,u.lastName].filter(Boolean).join(' ') || u.email}</option>)}</select></div><div className="field"><label>موعد التسليم المطلوب</label><input type="date" className="input" defaultValue={o.requestedDeliveryDate?.slice(0,10) || ''} onBlur={async e => { const value = e.target.value || null; if (value === (o.requestedDeliveryDate?.slice(0,10) || null)) return; try { await updateOrder.mutateAsync({ orderId: id, data: { requestedDeliveryDate: value } }); await invalidate(); } catch (err) { setError(errText(err)); } }} data-testid="input-order-delivery-date" /></div></div><div className="meta-row"><span>تاريخ التسجيل</span><strong>{niceDate(o.createdAt)}</strong></div>{o.notes && <p>{o.notes}</p>}<div className="inline" style={{ marginTop: 16 }}><select id="override-status" className="select" style={{ maxWidth: 210 }} defaultValue="none">{orderStatusOptions.map(s => <option value={s} key={s}>{s === 'none' ? 'تغيير حالة الطلب' : displayStatus(s)}</option>)}</select><button className="btn btn-quiet" onClick={async () => { const el = document.getElementById('override-status') as HTMLSelectElement; try { await updateOrder.mutateAsync({ orderId: id, data: { statusOverride: el.value as never } }); await invalidate(); } catch (err) { setError(errText(err)); } }} disabled={updateOrder.isPending}>تطبيق حالة استثنائية</button></div></section>
-      <section className="panel"><h2 style={{ fontSize: 20, marginTop: 0 }}>المنتجات والتقدم</h2>{o.items.map(item => <div className="item-form" key={item.id}><div className="inline" style={{ justifyContent: 'space-between' }}><strong>{item.productName}</strong><span className={statusClass(item.status)}>{displayStatus(item.status)}</span></div><div className="meta-row"><span>الكمية</span><strong>{item.quantity} {item.unit || ''}</strong></div>{item.dimensions && <div className="meta-row"><span>المقاس</span><strong>{item.dimensions}</strong></div>}{item.material && <div className="meta-row"><span>الخامة</span><strong>{item.material}</strong></div>}{item.specifications && <p>{item.specifications}</p>}<div className="form-grid"><div className="field"><label>حالة التصميم</label><select className="select" value={item.designStatus} onChange={async e => { try { await updateItem.mutateAsync({ itemId: item.id, data: { designStatus: e.target.value as never } }); await invalidate(); } catch (err) { setError(errText(err)); } }} data-testid={`select-design-status-${item.id}`}>{['not_required','waiting','in_progress','under_review','requires_revision','approved'].map(s => <option key={s} value={s}>{displayStatus(s)}</option>)}</select></div><div className="field"><label>حالة الإنتاج</label><select className="select" value={item.productionStatus} onChange={async e => { try { await updateItem.mutateAsync({ itemId: item.id, data: { productionStatus: e.target.value as never } }); await invalidate(); } catch (err) { setError(errText(err)); } }} data-testid={`select-production-status-${item.id}`}>{['not_started','in_progress','on_hold','ready'].map(s => <option key={s} value={s}>{displayStatus(s)}</option>)}</select></div><div className="field"><label>حالة المنتج</label><select className="select" value={item.status} onChange={async e => { try { await updateItem.mutateAsync({ itemId: item.id, data: { status: e.target.value as never } }); await invalidate(); } catch (err) { setError(errText(err)); } }} data-testid={`select-item-status-${item.id}`}>{['new','in_progress','ready','delivered','on_hold','cancelled'].map(s => <option key={s} value={s}>{displayStatus(s)}</option>)}</select></div></div></div>)}</section>
-      <section className="panel"><h2 style={{ fontSize: 20, marginTop: 0 }}>الملفات المرفقة</h2>{o.attachments.length ? <div className="inline">{o.attachments.map(a => <AttachmentLink key={a.id} attachment={a} />)}</div> : <p style={{ color: '#718080' }}>لا توجد ملفات مرفقة بهذا الطلب.</p>}</section>
-      <section className="panel"><h2 style={{ fontSize: 20, marginTop: 0 }}>المراجع الواردة</h2>{o.references.length ? o.references.map(r => <div className="meta-row" key={r.id}><span>{displayStatus(r.source)} · {niceDate(r.receivedAt)}</span><strong>{r.referenceDetails || 'بدون تفاصيل'}</strong></div>) : <p style={{ color: '#718080' }}>لا توجد مراجع مرتبطة.</p>}<form onSubmit={onReference} className="form-grid" style={{ marginTop: 18 }}><div className="field"><label>المصدر</label><select className="select" value={referenceSource} onChange={e => setReferenceSource(e.target.value)}>{['whatsapp','messenger','phone','manager_phone','in_person','internal','other'].map(s => <option key={s} value={s}>{displayStatus(s)}</option>)}</select></div><div className="field"><label>تفاصيل المرجع</label><input className="input" value={referenceDetails} onChange={e => setReferenceDetails(e.target.value)} placeholder="رابط أو وصف مختصر" /></div><div><button className="btn btn-quiet" disabled={linkRef.isPending}><Plus size={16} />ربط مرجع وارد</button></div></form></section>
-    </div><aside className="stack"><section className="panel"><h2 style={{ fontSize: 19, marginTop: 0 }}>سجل النشاط</h2>{activity.isLoading ? <div className="skeleton" /> : activity.isError ? <p>تعذّر تحميل سجل النشاط.</p> : (activity.data || o.activity).length ? (activity.data || o.activity).map(a => <div className="activity-row" key={a.id}><span className="activity-dot" /><div><strong>{a.summary}</strong><div style={{ color: '#718080', fontSize: 12, marginTop: 4 }}>{niceDate(a.occurredAt)}</div></div></div>) : <p style={{ color: '#718080' }}>لا يوجد نشاط مسجل بعد.</p>}</section></aside></div>
-    {error && <p role="alert" style={{ color: '#a64434', marginTop: 16 }}>{error}</p>}
+  const onReference = async (e: FormEvent) => {
+    e.preventDefault();
+    setError('');
+    try {
+      await linkRef.mutateAsync({
+        orderId: id,
+        data: { source: referenceSource as never, referenceDetails: referenceDetails || null },
+      });
+      setReferenceDetails('');
+      await invalidate();
+    } catch (err) {
+      setError(errText(err));
+    }
+  };
+  const updateItemValue = async (itemId: number, field: 'designStatus' | 'productionStatus' | 'status', value: string) => {
+    setError('');
+    try {
+      await updateItem.mutateAsync({ itemId, data: { [field]: value } as never });
+      await invalidate();
+    } catch (err) {
+      setError(errText(err));
+    }
+  };
+  const orderStatusOptions = ['none', 'on_hold', 'cancelled'];
+  return <>
+    <PageTitle title={`طلب ${o.orderNumber}`} subtitle={`${o.customer.name} · ${o.branch.name}`} action={<Link href="/orders" className="btn btn-outline"><ArrowLeft size={17} />كل الطلبات</Link>} />
+    <div className="order-layout">
+      <div className="stack">
+        <section className="panel">
+          <div className="inline" style={{ justifyContent: 'space-between', marginBottom: 12 }}>
+            <h2 style={{ margin: 0, fontSize: 20 }}>ملخص الطلب</h2>
+            <span className={statusClass(o.status)}>{displayStatus(o.status)}</span>
+          </div>
+          <div className="meta-row"><span>العميل</span><strong>{o.customer.name}</strong></div>
+          <div className="meta-row"><span>الفرع</span><strong>{o.branch.name}</strong></div>
+          <div className="meta-row"><span>مصدر الطلب</span><strong>{displayStatus(o.source)} {o.sourceDetails || ''}</strong></div>
+          <div className="form-grid" style={{ marginTop: 12 }}>
+            {canAssignOrder ? <div className="field">
+              <label htmlFor="select-order-owner">المسؤول عن الطلب</label>
+              <select id="select-order-owner" className="select" value={o.responsibleUser?.id || ''} onChange={async e => {
+                try {
+                  await updateOrder.mutateAsync({ orderId: id, data: { responsibleUserId: e.target.value || null } });
+                  await invalidate();
+                } catch (err) { setError(errText(err)); }
+              }} data-testid="select-order-owner">
+                <option value="">غير معيّن</option>
+                {(team.data || []).filter(u => u.status === 'active').map(u => <option value={u.id} key={u.id}>{[u.firstName, u.lastName].filter(Boolean).join(' ') || u.email}</option>)}
+              </select>
+            </div> : <div className="field">
+              <label>المسؤول عن الطلب</label>
+              <div className="input" style={{ display: 'flex', alignItems: 'center' }}>
+                {o.responsibleUser ? [o.responsibleUser.firstName, o.responsibleUser.lastName].filter(Boolean).join(' ') || o.responsibleUser.email : 'غير معيّن'}
+              </div>
+            </div>}
+            <div className="field">
+              <label htmlFor={`input-order-delivery-date-${id}`}>موعد التسليم المطلوب</label>
+              <input id={`input-order-delivery-date-${id}`} type="date" className="input" disabled={!canEditOrder} defaultValue={o.requestedDeliveryDate?.slice(0, 10) || ''} onBlur={async e => {
+                const value = e.target.value || null;
+                if (!canEditOrder || value === (o.requestedDeliveryDate?.slice(0, 10) || null)) return;
+                try {
+                  await updateOrder.mutateAsync({ orderId: id, data: { requestedDeliveryDate: value } });
+                  await invalidate();
+                } catch (err) { setError(errText(err)); }
+              }} data-testid="input-order-delivery-date" />
+            </div>
+          </div>
+          <div className="meta-row"><span>تاريخ التسجيل</span><strong>{niceDate(o.createdAt)}</strong></div>
+          {o.notes && <p>{o.notes}</p>}
+          {canEditOrder && <div className="inline" style={{ marginTop: 16 }}>
+            <select id={`override-status-${id}`} className="select" style={{ maxWidth: 210 }} defaultValue="none" data-testid="select-order-exception">
+              {orderStatusOptions.map(s => <option value={s} key={s}>{s === 'none' ? 'تغيير حالة الطلب' : displayStatus(s)}</option>)}
+            </select>
+            <button className="btn btn-quiet" onClick={async () => {
+              const el = document.getElementById(`override-status-${id}`) as HTMLSelectElement;
+              try {
+                await updateOrder.mutateAsync({ orderId: id, data: { statusOverride: el.value as never } });
+                await invalidate();
+              } catch (err) { setError(errText(err)); }
+            }} disabled={updateOrder.isPending} data-testid="button-apply-order-exception">تطبيق حالة استثنائية</button>
+          </div>}
+        </section>
+        <section className="panel">
+          <h2 style={{ fontSize: 20, marginTop: 0 }}>المنتجات والتقدم</h2>
+          {o.items.map(item => {
+            const canUpdateThisDesign = canEditOrder || (role === 'designer' && (!item.designerUserId || item.designerUserId === profile.data?.user?.id));
+            return <div className="item-form" key={item.id}>
+              <div className="inline" style={{ justifyContent: 'space-between' }}>
+                <strong>{item.productName}</strong><span className={statusClass(item.status)}>{displayStatus(item.status)}</span>
+              </div>
+              <div className="meta-row"><span>الكمية</span><strong>{item.quantity} {item.unit || ''}</strong></div>
+              {item.dimensions && <div className="meta-row"><span>المقاس</span><strong>{item.dimensions}</strong></div>}
+              {item.material && <div className="meta-row"><span>الخامة</span><strong>{item.material}</strong></div>}
+              {item.specifications && <p>{item.specifications}</p>}
+              <div className="form-grid">
+                {canEditDesign ? <div className="field">
+                  <label htmlFor={`select-design-status-${item.id}`}>حالة التصميم</label>
+                  <select id={`select-design-status-${item.id}`} className="select" value={item.designStatus} disabled={!canUpdateThisDesign} onChange={e => void updateItemValue(item.id, 'designStatus', e.target.value)} data-testid={`select-design-status-${item.id}`}>
+                    {['not_required', 'waiting', 'in_progress', 'under_review', 'requires_revision', 'approved'].map(s => <option key={s} value={s}>{displayStatus(s)}</option>)}
+                  </select>
+                </div> : <div className="meta-row"><span>حالة التصميم</span><strong>{displayStatus(item.designStatus)}</strong></div>}
+                {canEditProduction ? <div className="field">
+                  <label htmlFor={`select-production-status-${item.id}`}>حالة الإنتاج</label>
+                  <select id={`select-production-status-${item.id}`} className="select" value={item.productionStatus} onChange={e => void updateItemValue(item.id, 'productionStatus', e.target.value)} data-testid={`select-production-status-${item.id}`}>
+                    {['not_started', 'in_progress', 'on_hold', 'ready'].map(s => <option key={s} value={s}>{displayStatus(s)}</option>)}
+                  </select>
+                </div> : <div className="meta-row"><span>حالة الإنتاج</span><strong>{displayStatus(item.productionStatus)}</strong></div>}
+                {canEditProduction ? <div className="field">
+                  <label htmlFor={`select-item-status-${item.id}`}>حالة المنتج</label>
+                  <select id={`select-item-status-${item.id}`} className="select" value={item.status} onChange={e => void updateItemValue(item.id, 'status', e.target.value)} data-testid={`select-item-status-${item.id}`}>
+                    {['new', 'in_progress', 'ready', 'delivered', 'on_hold', 'cancelled'].map(s => <option key={s} value={s}>{displayStatus(s)}</option>)}
+                  </select>
+                </div> : null}
+              </div>
+            </div>;
+          })}
+        </section>
+        <section className="panel">
+          <h2 style={{ fontSize: 20, marginTop: 0 }}>الملفات المرفقة</h2>
+          {o.attachments.length ? <div className="inline">{o.attachments.map(a => <AttachmentLink key={a.id} attachment={a} />)}</div> : <p style={{ color: '#718080' }}>لا توجد ملفات مرفقة بهذا الطلب.</p>}
+          <AttachmentUploader orderId={id} onUploaded={invalidate} />
+        </section>
+        <section className="panel">
+          <h2 style={{ fontSize: 20, marginTop: 0 }}>المراجع الواردة</h2>
+          {o.references.length ? o.references.map(r => <div className="meta-row" key={r.id}><span>{displayStatus(r.source)} · {niceDate(r.receivedAt)}</span><strong>{r.referenceDetails || 'بدون تفاصيل'}</strong></div>) : <p style={{ color: '#718080' }}>لا توجد مراجع مرتبطة.</p>}
+          {canEditOrder && <form onSubmit={onReference} className="form-grid" style={{ marginTop: 18 }}>
+            <div className="field"><label htmlFor="select-reference-source">المصدر</label><select id="select-reference-source" className="select" value={referenceSource} onChange={e => setReferenceSource(e.target.value)} data-testid="select-reference-source">{['whatsapp', 'messenger', 'phone', 'manager_phone', 'in_person', 'internal', 'other'].map(s => <option key={s} value={s}>{displayStatus(s)}</option>)}</select></div>
+            <div className="field"><label htmlFor="input-reference-details">تفاصيل المرجع</label><input id="input-reference-details" className="input" value={referenceDetails} onChange={e => setReferenceDetails(e.target.value)} placeholder="رابط أو وصف مختصر" data-testid="input-reference-details" /></div>
+            <div><button className="btn btn-quiet" disabled={linkRef.isPending} data-testid="button-link-reference"><Plus size={16} />ربط مرجع وارد</button></div>
+          </form>}
+        </section>
+      </div>
+      <aside className="stack">
+        <section className="panel">
+          <h2 style={{ fontSize: 19, marginTop: 0 }}>سجل النشاط</h2>
+          {activity.isLoading ? <div className="skeleton" /> : activity.isError ? <p>تعذّر تحميل سجل النشاط.</p> : (activity.data || o.activity).length ? (activity.data || o.activity).map(a => <div className="activity-row" key={a.id}><span className="activity-dot" /><div><strong>{a.summary}</strong><div style={{ color: '#718080', fontSize: 12, marginTop: 4 }}>{niceDate(a.occurredAt)}</div></div></div>) : <p style={{ color: '#718080' }}>لا يوجد نشاط مسجل بعد.</p>}
+        </section>
+      </aside>
+    </div>
+    {error && <p role="alert" style={{ color: '#a64434', marginTop: 16 }} data-testid="error-order-update">{error}</p>}
   </>;
 }
 function Customers() {
@@ -267,15 +473,16 @@ function Branches() {
 }
 function Team() {
   const qc = useQueryClient(); const branches = useListBranches({ includeInactive: false }); const users = useListAppUsers(); const invites = useListUserInvitations();
+  const profile = useGetMyAppProfile(); const canGrantAdmin = profile.data?.user?.role === 'admin'; const isManager = profile.data?.user?.role === 'manager';
   const create = useCreateUserInvitation(); const revoke = useRevokeUserInvitation(); const update = useUpdateAppUser();
-  const [email, setEmail] = useState(''); const [role, setRole] = useState('order_reception'); const [branchIds, setBranchIds] = useState<number[]>([]); const [error, setError] = useState('');
-  const invite = async (e: FormEvent) => { e.preventDefault(); setError(''); try { await create.mutateAsync({ data: { email: email.trim(), role: role as never, branchIds } }); setEmail(''); await qc.invalidateQueries({ queryKey: getListUserInvitationsQueryKey() }); } catch (err) { setError(errText(err)); } };
+  const [email, setEmail] = useState(''); const [role, setRole] = useState('order_reception'); const [branchIds, setBranchIds] = useState<number[]>([]); const [error, setError] = useState(''); const [success, setSuccess] = useState('');
+  const invite = async (e: FormEvent) => { e.preventDefault(); setError(''); setSuccess(''); try { await create.mutateAsync({ data: { email: email.trim(), role: role as never, branchIds } }); setEmail(''); setSuccess('سُجلت صلاحية الموظف. لم يُرسل النظام بريداً إلكترونياً.'); await qc.invalidateQueries({ queryKey: getListUserInvitationsQueryKey() }); } catch (err) { setError(errText(err)); } };
   const revokeInvite = async (id: number) => { if (!window.confirm('هل تريد إلغاء هذه الدعوة؟')) return; try { await revoke.mutateAsync({ invitationId: id } as never); await qc.invalidateQueries({ queryKey: getListUserInvitationsQueryKey() }); } catch (err) { setError(errText(err)); } };
   const refresh = async () => Promise.all([qc.invalidateQueries({ queryKey: getListAppUsersQueryKey() }), qc.invalidateQueries({ queryKey: getListUserInvitationsQueryKey() })]);
   return <><PageTitle title="الفريق والصلاحيات" subtitle="إدارة حسابات العمل والدعوات وتعيين الدور والفروع." />
-    <form className="panel" onSubmit={invite} style={{ marginBottom: 20 }}><h2 style={{ marginTop: 0, fontSize: 20 }}>دعوة موظف</h2><div className="form-grid"><div className="field"><label>البريد الإلكتروني</label><input type="email" required className="input" value={email} onChange={e => setEmail(e.target.value)} data-testid="input-invitation-email" /></div><div className="field"><label>الدور</label><select className="select" value={role} onChange={e => setRole(e.target.value)}>{Object.entries(roleNames).map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></div><div className="field"><label>الفروع (اختياري)</label><select multiple className="select" value={branchIds.map(String)} onChange={e => setBranchIds(Array.from(e.target.selectedOptions, o => Number(o.value)))} style={{ minHeight: 80 }}>{(branches.data || []).filter(b => b.isActive).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div></div>{error && <p role="alert" style={{ color: '#a64434' }}>{error}</p>}<button className="btn btn-primary" disabled={create.isPending}><Plus size={17} />إرسال دعوة</button></form>
-    <div className="stack"><section className="panel"><h2 style={{ fontSize: 20, marginTop: 0 }}>الموظفون</h2>{users.isLoading ? <div className="skeleton" /> : users.isError ? <ErrorBox retry={() => void users.refetch()} /> : !users.data?.length ? <Empty title="لا يوجد موظفون مضافون" detail="تظهر الحسابات النشطة والمعلقة بعد ربطها بالشركة." /> : <div className="table-wrap"><table><thead><tr><th>الموظف</th><th>الدور</th><th>الفروع</th><th>الحالة</th></tr></thead><tbody>{users.data.map(u => <tr key={u.id}><td>{[u.firstName,u.lastName].filter(Boolean).join(' ') || u.email}<div style={{ color: '#718080', fontSize: 12 }}>{u.email}</div></td><td><select className="select" value={u.role} onChange={async e => { try { await update.mutateAsync({ userId: u.id, data: { role: e.target.value as never } }); await refresh(); } catch (err) { setError(errText(err)); } }}>{Object.entries(roleNames).map(([v, label]) => <option value={v} key={v}>{label}</option>)}</select></td><td><select multiple className="select" value={u.branchIds.map(String)} onChange={async e => { const assigned = Array.from(e.target.selectedOptions, option => Number(option.value)); try { await update.mutateAsync({ userId: u.id, data: { branchIds: assigned } }); await refresh(); } catch (err) { setError(errText(err)); } }} style={{ minHeight: 74 }}>{(branches.data || []).map(b => <option value={b.id} key={b.id}>{b.name}</option>)}</select></td><td><select className="select" value={u.status} onChange={async e => { try { await update.mutateAsync({ userId: u.id, data: { status: e.target.value as never } }); await refresh(); } catch (err) { setError(errText(err)); } }}><option value="active">نشط</option><option value="pending">معلّق</option><option value="suspended">موقوف</option></select></td></tr>)}</tbody></table></div>}</section>
-      <section className="panel"><h2 style={{ fontSize: 20, marginTop: 0 }}>الدعوات المعلقة</h2>{invites.isLoading ? <div className="skeleton" /> : invites.isError ? <ErrorBox retry={() => void invites.refetch()} /> : !invites.data?.length ? <Empty title="لا توجد دعوات معلقة" detail="ستظهر الدعوات المرسلة ولم تُقبل بعد هنا." /> : <div className="table-wrap"><table><thead><tr><th>البريد</th><th>الدور</th><th>تاريخ الدعوة</th><th></th></tr></thead><tbody>{invites.data.map(i => <tr key={i.id}><td>{i.email}</td><td>{roleNames[i.role] || i.role}</td><td>{niceDate(i.createdAt)}</td><td><button className="btn btn-danger" onClick={() => void revokeInvite(i.id)} data-testid={`button-revoke-invitation-${i.id}`}>إلغاء الدعوة</button></td></tr>)}</tbody></table></div>}</section></div>
+    <form className="panel" onSubmit={invite} style={{ marginBottom: 20 }}><h2 style={{ marginTop: 0, fontSize: 20 }}>تجهيز وصول موظف</h2><p style={{ color: '#718080', lineHeight: 1.8 }}>يسجّل النظام البريد والدور والفروع فقط ولا يرسل بريداً تلقائياً. اطلب من الموظف إنشاء حساب باستخدام البريد نفسه عبر <Link href="/sign-up" style={{ color: '#286d64' }}>صفحة التسجيل</Link>.</p><div className="form-grid"><div className="field"><label>البريد الإلكتروني</label><input type="email" required className="input" value={email} onChange={e => setEmail(e.target.value)} data-testid="input-invitation-email" /></div><div className="field"><label>الدور</label><select className="select" value={role} onChange={e => setRole(e.target.value)} data-testid="select-invitation-role">{Object.entries(roleNames).filter(([v]) => canGrantAdmin || v !== 'admin').map(([v, label]) => <option key={v} value={v}>{label}</option>)}</select></div><div className="field"><label>فروع الوصول {isManager ? '(مطلوبة)' : '(اختياري)'}</label><select multiple className="select" value={branchIds.map(String)} onChange={e => setBranchIds(Array.from(e.target.selectedOptions, o => Number(o.value)))} style={{ minHeight: 80 }} data-testid="select-invitation-branches">{(branches.data || []).filter(b => b.isActive).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div></div>{error && <p role="alert" style={{ color: '#a64434' }}>{error}</p>}{success && <p role="status" style={{ color: '#286d64' }} data-testid="text-invitation-success">{success}</p>}<button className="btn btn-primary" disabled={create.isPending}><Plus size={17} />حفظ صلاحية الوصول</button></form>
+    <div className="stack"><section className="panel"><h2 style={{ fontSize: 20, marginTop: 0 }}>الموظفون</h2>{users.isLoading ? <div className="skeleton" /> : users.isError ? <ErrorBox retry={() => void users.refetch()} /> : !users.data?.length ? <Empty title="لا يوجد موظفون مضافون" detail="تظهر الحسابات بعد تفعيل حساب الموظف." /> : <div className="table-wrap"><table><thead><tr><th>الموظف</th><th>الدور</th><th>الفروع</th><th>الحالة</th></tr></thead><tbody>{users.data.map(u => <tr key={u.id}><td>{[u.firstName,u.lastName].filter(Boolean).join(' ') || u.email}<div style={{ color: '#718080', fontSize: 12 }}>{u.email}</div></td><td><select className="select" value={u.role} onChange={async e => { try { await update.mutateAsync({ userId: u.id, data: { role: e.target.value as never } }); await refresh(); } catch (err) { setError(errText(err)); } }} data-testid={`select-user-role-${u.id}`}>{Object.entries(roleNames).filter(([v]) => canGrantAdmin || v !== 'admin').map(([v, label]) => <option value={v} key={v}>{label}</option>)}</select></td><td><select multiple className="select" value={u.branchIds.map(String)} onChange={async e => { const assigned = Array.from(e.target.selectedOptions, option => Number(option.value)); try { await update.mutateAsync({ userId: u.id, data: { branchIds: assigned } }); await refresh(); } catch (err) { setError(errText(err)); } }} style={{ minHeight: 74 }} data-testid={`select-user-branches-${u.id}`}>{(branches.data || []).map(b => <option value={b.id} key={b.id}>{b.name}</option>)}</select></td><td><select className="select" value={u.status} onChange={async e => { try { await update.mutateAsync({ userId: u.id, data: { status: e.target.value as never } }); await refresh(); } catch (err) { setError(errText(err)); } }} data-testid={`select-user-status-${u.id}`}><option value="active">نشط</option><option value="pending">معلّق</option><option value="suspended">موقوف</option></select></td></tr>)}</tbody></table></div>}</section>
+      <section className="panel"><h2 style={{ fontSize: 20, marginTop: 0 }}>دعوات الوصول غير المفعلة</h2>{invites.isLoading ? <div className="skeleton" /> : invites.isError ? <ErrorBox retry={() => void invites.refetch()} /> : !invites.data?.length ? <Empty title="لا توجد صلاحيات بانتظار التسجيل" detail="تظهر هنا صلاحيات الوصول التي حفظتها الإدارة ولم يقبلها الموظف بعد. لم يُرسل بريد تلقائي." /> : <div className="table-wrap"><table><thead><tr><th>البريد</th><th>الدور</th><th>تاريخ التسجيل</th><th></th></tr></thead><tbody>{invites.data.map(i => <tr key={i.id}><td>{i.email}</td><td>{roleNames[i.role] || i.role}</td><td>{niceDate(i.createdAt)}</td><td><button className="btn btn-danger" onClick={() => void revokeInvite(i.id)} data-testid={`button-revoke-invitation-${i.id}`}>إلغاء الصلاحية</button></td></tr>)}</tbody></table></div>}</section></div>
   </>;
 }
 function CustomerRecord() {
@@ -289,7 +496,7 @@ function CustomerRecord() {
 function RoutedErrorBoundary({ children }: { children: ReactNode }) { const [location] = useLocation(); return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>; }
 function Router() {
   return <RoutedErrorBoundary><Switch>
-    <Route path="/"><SignedIn><Redirect to="/dashboard" /></SignedIn><SignedOut><Home /></SignedOut></Route>
+    <Route path="/"><Show when="signed-in"><Redirect to="/dashboard" /></Show><Show when="signed-out"><Home /></Show></Route>
     <Route path="/sign-in/*?" component={SignInPage} /><Route path="/sign-up/*?" component={SignUpPage} />
     <Route path="/dashboard"><Protected><Dashboard /></Protected></Route>
     <Route path="/orders"><Protected><Orders /></Protected></Route>

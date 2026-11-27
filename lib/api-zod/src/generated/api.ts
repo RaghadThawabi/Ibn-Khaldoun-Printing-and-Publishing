@@ -21,7 +21,7 @@ export const HealthCheckResponse = zod.object({
  * @summary Get the signed-in user's app access state
  */
 export const GetMyAppProfileResponse = zod.object({
-  "state": zod.enum(['active', 'pending_invitation', 'setup_required']),
+  "state": zod.enum(['active', 'pending_invitation', 'setup_required', 'suspended']),
   "hasAdministrator": zod.boolean(),
   "user": zod.union([zod.object({
   "id": zod.string(),

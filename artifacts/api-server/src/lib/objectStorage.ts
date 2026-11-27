@@ -267,6 +267,11 @@ async function signObjectURL({
     );
   }
 
-  const { signed_url: signedURL } = await response.json();
+  const result = (await response.json()) as { signed_url?: unknown };
+  const signedURL =
+    typeof result.signed_url === "string" ? result.signed_url : null;
+  if (!signedURL) {
+    throw new Error("Object storage did not return a signed upload URL.");
+  }
   return signedURL;
 }

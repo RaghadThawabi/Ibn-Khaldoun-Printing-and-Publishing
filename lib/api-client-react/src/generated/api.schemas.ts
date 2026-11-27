@@ -80,6 +80,7 @@ export const MyProfileResponseState = {
   active: 'active',
   pending_invitation: 'pending_invitation',
   setup_required: 'setup_required',
+  suspended: 'suspended',
 } as const;
 
 export interface MyProfileResponse {
