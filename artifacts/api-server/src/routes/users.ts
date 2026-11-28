@@ -21,7 +21,6 @@ import {
   branchExists,
   requireAppUser,
   requireRoles,
-  replaceUserBranches,
 } from "../lib/auth";
 import { getAppUsersByIds, serializeAppUser, toIso } from "../lib/orderData";
 
@@ -252,14 +251,24 @@ router.patch(
       res.status(403).json({ error: "You can only assign your own branches." });
       return;
     }
+    let updatedBranchIds: number[] | undefined;
     if (parsed.data.branchIds) {
-      const branchIds = [...new Set(parsed.data.branchIds)];
-      for (const branchId of branchIds) {
+      const requestedBranchIds = [...new Set(parsed.data.branchIds)];
+      for (const branchId of requestedBranchIds) {
         if (!(await branchExists(branchId, false))) {
           res.status(400).json({ error: "Choose branches that exist." });
           return;
         }
       }
+      updatedBranchIds =
+        actor.role === "admin"
+          ? requestedBranchIds
+          : [
+              ...new Set([
+                ...targetBranchIds.filter((id) => !actor.branchIds.includes(id)),
+                ...requestedBranchIds,
+              ]),
+            ];
     }
     if (target.role === "admin" && target.status === "active") {
       const isRemovingAdmin =
@@ -276,22 +285,36 @@ router.patch(
         }
       }
     }
-    if (parsed.data.branchIds) {
-      await replaceUserBranches(target.id, [...new Set(parsed.data.branchIds)]);
-    }
-    const [updated] = await db
-      .update(appUsers)
-      .set({
-        role: parsed.data.role,
-        status: parsed.data.status,
-        updatedAt: new Date(),
-      })
-      .where(eq(appUsers.id, target.id))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      if (updatedBranchIds) {
+        await tx.delete(userBranches).where(eq(userBranches.userId, target.id));
+        if (updatedBranchIds.length) {
+          await tx.insert(userBranches).values(
+            updatedBranchIds.map((branchId) => ({ userId: target.id, branchId })),
+          );
+        }
+      }
+      const [saved] = await tx
+        .update(appUsers)
+        .set({
+          role: parsed.data.role,
+          status: parsed.data.status,
+          updatedAt: new Date(),
+        })
+        .where(eq(appUsers.id, target.id))
+        .returning();
+      return saved;
+    });
     const mapped = await getAppUsersByIds([updated.id]);
+    const serialized = mapped.get(updated.id) ?? serializeAppUser(updated, []);
     res.json(
       UpdateAppUserResponse.parse(
-        mapped.get(updated.id) ?? serializeAppUser(updated, []),
+        actor.role === "admin"
+          ? serialized
+          : {
+              ...serialized,
+              branchIds: serialized.branchIds.filter((id) => actor.branchIds.includes(id)),
+            },
       ),
     );
   },

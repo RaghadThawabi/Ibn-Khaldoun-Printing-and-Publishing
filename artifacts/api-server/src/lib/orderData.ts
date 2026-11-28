@@ -89,13 +89,18 @@ export function derivedOrderStatus(
 ): string {
   if (statusOverride === "on_hold" || statusOverride === "cancelled") return statusOverride;
   if (!items.length) return "new";
-  const delivered = items.filter((item) => item.status === "delivered").length;
-  const ready = items.filter((item) => item.status === "ready" || item.status === "delivered").length;
-  if (delivered === items.length) return "completed";
+  const activeItems = items.filter((item) => item.status !== "cancelled");
+  if (!activeItems.length) return "cancelled";
+  const delivered = activeItems.filter((item) => item.status === "delivered").length;
+  const ready = activeItems.filter((item) => item.status === "ready" || item.status === "delivered").length;
+  if (delivered === activeItems.length) {
+    return activeItems.length === items.length ? "completed" : "partially_delivered";
+  }
   if (delivered > 0) return "partially_delivered";
-  if (ready === items.length) return "ready";
+  if (ready === activeItems.length) return "ready";
   if (ready > 0) return "partially_ready";
-  if (items.some((item) => item.status === "in_progress")) return "in_progress";
+  if (activeItems.some((item) => item.status === "in_progress")) return "in_progress";
+  if (activeItems.every((item) => item.status === "on_hold")) return "on_hold";
   return "new";
 }
 
