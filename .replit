@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "python-base-3.13"]
 
 [deployment]
 router = "application"
@@ -22,3 +22,6 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
+
+[objectStorage]
+defaultBucketID = "replit-objstore-865df049-fdd7-4107-94ba-ca8e84d491ba"
